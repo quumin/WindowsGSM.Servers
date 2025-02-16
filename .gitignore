@@ -1,0 +1,7 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/.vs/WindowsGSM.Servers/FileContentIndex
+/.vs/WindowsGSM.Servers/v17
+/.vs

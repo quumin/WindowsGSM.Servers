@@ -1,14 +1,14 @@
 ﻿using System;
-using System.Text;
-using System.Diagnostics;
 using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Net;
+using System.Text;
 using System.Threading.Tasks;
 using WindowsGSM.Functions;
 using WindowsGSM.GameServer.Engine;
 using WindowsGSM.GameServer.Query;
-using System.IO;
-using System.Linq;
-using System.Net;
 
 namespace WindowsGSM.Plugins
 {
@@ -17,167 +17,194 @@ namespace WindowsGSM.Plugins
         // - Plugin Details
         public Plugin Plugin = new Plugin
         {
-            name = "WindowsGSM.Factorio", // WindowsGSM.Factorio
-            author = "Andy",
-            description = "🧩 WindowsGSM plugin for supporting Factorio Dedicated Server",
-            version = "1.0",
-            url = "https://github.com/Kickbut101/WindowsGSM.Factorio", // Github repository link (Best practice)
-            color = "#800080"
+            name = "WindowsGSM.Factorio",                                       // Plugin Name, of format WindowsGSM.XXXX
+            author = "Q-min",                                                   // Plugin Author
+            description = "Plugin for Factorio (Dedicated Server).",            // Plugin Description
+            version = "1.1",                                                        /* Version History:
+                                                                                     *  Version 1.1 -
+                                                                                     *      Contains updates to comments, handling MaxPlayers, removal of -log flag so it can run headless.
+                                                                                     *  Version 1.0 - 
+                                                                                     *      Can be found on https://github.com/Kickbut101/WindowsGSM.Factorio.
+                                                                                     */
+            url = "https://github.com/quumin/WindowsGSM.Servers",               // Github Repository Link
+            color = "#f9b234"                                                   // Color Hex, Lightning Yellow
         };
 
-        // - Standard Constructor and properties
+        // - Standard Constructor and Properties:
         public Factorio(ServerConfig serverData) : base(serverData) => base.serverData = _serverData = serverData;
-        private readonly ServerConfig _serverData; // Store server start metadata, such as start ip, port, start param, etc
+        // Store server start metadata, such as start ip, port, start param, etc
+        private readonly ServerConfig _serverData; 
 
-        // - Settings properties for SteamCMD installer
+        // - Settings Properties for SteamCMD Installer:
+        //  Factorio Requires a Login to Install via SteamCMD, you will need to verify your account via SteamGuard.
         public override bool loginAnonymous => false;
-        public override string AppId => "427520"; // Game server appId, DST is 343050
+        //  Factorio Game App ID for Steam.
+        public override string AppId => "427520"; 
 
-
+        // - Settings for the Actuya
         public string FullName = "Factorio Dedicated Server";
-        public override string StartPath => @"bin/x64/Factorio.exe";
+        public override string StartPath => @"bin\x64\factorio.exe";
         public bool AllowsEmbedConsole = true;
-        public int PortIncrements = 2;
+        public int PortIncrements = 1;
         public object QueryMethod = new A2S(); // Query method should be use on current server type. Accepted value: null or new A2S() or new FIVEM() or new UT3()
 
         public string Port = "34197"; // Default factorio port - can be changed in config file - UDP only
         public string QueryPort = "27001"; // Unsure so far
-        public string Defaultmap = "MyMap"; // there is no map so to speak - We'll use this value to make save file
+        public string Defaultmap = "Default"; // Up to user, doesn't matter what's here.
         public string Maxplayers = "10";
         public string Additional = "";
 
         // - Create a default cfg for the game server after installation
-        public async void CreateServerCFG() {}
+        public async void CreateServerCFG()
+        {
+            await Task.Run(() =>
+            {
+                // No config file seems necessary
+            });
+        }//CreateServerCFG()
 
         // - Start server function, return its Process to WindowsGSM    
         public async Task<Process> Start()
         {
-            string shipWorkingPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID); // c:\windowsgsm\servers\1\serverfiles\
-            string shipWorkingBinx64Path = Path.Combine(ServerPath.GetServersServerFiles(_serverData.ServerID, @"bin/x64/")).ToString(); // c:\windowsgsm\servers\1\serverfiles\bin\x64
-            string shipWorkingDataPath = Path.Combine(ServerPath.GetServersServerFiles(_serverData.ServerID, @"data/")).ToString(); // c:\windowsgsm\servers\1\serverfiles\data
-            string shipWorkingEXEPathFull = Path.Combine(ServerPath.GetServersServerFiles(_serverData.ServerID, StartPath)); // c:\windowsgsm\servers\1\serverfiles\ + bin\x64\factorio.exe
-
-            // Flip the backslashes for forwards slashes. Unsure if this was necessary.
-            shipWorkingBinx64Path = shipWorkingBinx64Path.Replace(@"\","/");
-            shipWorkingDataPath = shipWorkingDataPath.Replace(@"\","/");
-            shipWorkingEXEPathFull = shipWorkingEXEPathFull.Replace(@"\","/");
-
-            // Does \bin\ path exist?
-            if(!Directory.Exists(shipWorkingBinx64Path))
-            {
-                Error = $"Directory not found - ({shipWorkingBinx64Path})";
-                return null;
-            }
+            string cfgPath = @"..\Factorio\config\config.ini";
+            string shipExePath = ServerPath.GetServersServerFiles(_serverData.ServerID, StartPath);
+            string settingsPath = @".\data\server-settings.json";
 
             // Does .exe path exist?
-            if (!File.Exists(shipWorkingEXEPathFull))
+            if (!File.Exists(shipExePath))
             {
-                Error = $"{Path.GetFileName(shipWorkingEXEPathFull)} not found in ({shipWorkingPath})";
+                Error = $"{Path.GetFileName(shipExePath)} not found in ({shipExePath})";
                 return null;
             }
 
             // Prepare start parameters
-            var param = new StringBuilder();
-            param.Append($" --start-server"); // starting parameter for using the factorio.exe as a server
-            param.Append($" \"{shipWorkingBinx64Path}{_serverData.ServerMap}_save.zip\""); // point to the save zip file. We're going to make and assume it's based on DefaultMap name with _save.zip appended - This is going to be in the default shipWorkingPath
-            param.Append($" --server-settings \"{shipWorkingDataPath}server-settings.json\"");
-            param.Append(string.IsNullOrWhiteSpace(_serverData.ServerPort) ? string.Empty : $" --port {_serverData.ServerPort}");
-            param.Append(string.IsNullOrWhiteSpace(_serverData.ServerParam) ? string.Empty : $" {_serverData.ServerParam}");
-
+            // This assumes you have already created a map, version to create a new map will be updated later.
+            string param = $" --start-server"; // starting parameter for using the factorio.exe as a server
+            param += string.IsNullOrWhiteSpace(_serverData.ServerMap) ? $" --create saves\\my-save.zip" : $"-load-latest saves\\{_serverData.ServerMap}.zip";
+            param += $" --config={cfgPath}";
+            param += $" --server-settings {settingsPath}";
+            param += string.IsNullOrWhiteSpace(_serverData.ServerPort) ? string.Empty : $" --port {_serverData.ServerPort}";
+            param += string.IsNullOrWhiteSpace(_serverData.ServerParam) ? string.Empty : $" {_serverData.ServerParam}";
 
             // Prepare Process
-            var p = new Process
+            var gameServerProcess = new Process
             {
                 StartInfo =
                 {
-                    WindowStyle = ProcessWindowStyle.Minimized,
+                    WorkingDirectory = ServerPath.GetServersServerFiles(_serverData.ServerID),
+                    FileName = shipExePath,
+                    Arguments = param,
                     UseShellExecute = false,
-                    WorkingDirectory = shipWorkingBinx64Path,
-                    FileName = shipWorkingEXEPathFull,
-                    Arguments = param.ToString()
+                    CreateNoWindow = true,
+                    WindowStyle = ProcessWindowStyle.Minimized
                 },
                 EnableRaisingEvents = true
             };
 
-
-            // Set up Redirect Input and Output to WindowsGSM Console if EmbedConsole is on
+            // If WindowsGSM "EmbedConsole" is enabled...
             if (AllowsEmbedConsole)
             {
-                p.StartInfo.CreateNoWindow = true;
-                p.StartInfo.RedirectStandardInput = true;
-                p.StartInfo.RedirectStandardOutput = true;
-                p.StartInfo.RedirectStandardError = true;
+                //... redirect output.
+                gameServerProcess.StartInfo.RedirectStandardInput = true;
+                gameServerProcess.StartInfo.RedirectStandardOutput = true;
+                gameServerProcess.StartInfo.RedirectStandardError = true;
                 var serverConsole = new ServerConsole(_serverData.ServerID);
-                p.OutputDataReceived += serverConsole.AddOutput;
-                p.ErrorDataReceived += serverConsole.AddOutput;
+                gameServerProcess.OutputDataReceived += serverConsole.AddOutput;
+                gameServerProcess.ErrorDataReceived += serverConsole.AddOutput;
 
-                // Start Process
-                try // Process ID isn't being returned yet. It seems to hang on start. WindowsGSM says "Starting" forever
+                //... start the Game Server Process.
+                try
                 {
-                    p.Start();
-                }
+                    gameServerProcess.Start();
+                }//try
+                catch (FileNotFoundException e)
+                {
+                    Error = $"\'Factorio.exe\' file not found: {e.Message}";
+                    return null;
+                }//catch
+                catch (UnauthorizedAccessException e)
+                {
+                    Error = $"Access to \'Factorio.exe\' denied: {e.Message}";
+                    return null;
+                }//catch
                 catch (Exception e)
                 {
-                    Error = e.Message;
-                    return null; // return null if fail to start
-                }
-                p.BeginOutputReadLine();
-                p.BeginErrorReadLine();
-                return p;
+                    Error = $"Unknown exception with \'Factorio.exe\': {e.Message}";
+                    return null;
+                }//catch
 
-            }
-            // Start Process
-            try
+                //... capture output to WindowsGSM.
+                gameServerProcess.BeginOutputReadLine();
+                gameServerProcess.BeginErrorReadLine();
+            }//if
+            else
             {
-                p.Start();
-                return p;
-            }
-            catch (Exception e)
-            {
-                base.Error = e.Message;
-                return null; // return null if fail to start
-            }
-        }
+                //... start the Game Server Process.
+                try
+                {
+                    gameServerProcess.Start();
+                }//try
+                catch (FileNotFoundException e)
+                {
+                    Error = $"\'Factorio.exe\' file not found: {e.Message}";
+                    return null;
+                }//catch
+                catch (UnauthorizedAccessException e)
+                {
+                    Error = $"Access to \'Factorio.exe\' denied: {e.Message}";
+                    return null;
+                }//catch
+                catch (Exception e)
+                {
+                    Error = $"Unknown exception with \'Factorio.exe\': {e.Message}";
+                    return null;
+                }//catch
+            }//else
+            await Task.Delay(10000);
+            return gameServerProcess;
+        }//Start()
 
         public async Task Stop(Process p)
         {
             await Task.Run(() =>
             {
-                if (p.StartInfo.CreateNoWindow)
-                {
-                    p.Kill();
-                }
-                else
-                {
-                    Functions.ServerConsole.SendMessageToMainWindow(p.MainWindowHandle, "shutdown");
-                }
+                Functions.ServerConsole.SetMainWindow(p.MainWindowHandle);
+                Functions.ServerConsole.SendWaitToMainWindow("^c"); // Send Ctrl+C command
+                p.WaitForExit(5000);
             });
+            await Task.Delay(500); // Give time to shut down properly
         }
 
+        public new async Task<Process> Update(bool validate = false, string custom = null)
+        {
+            var (p, error) = await Installer.SteamCMD.UpdateEx(serverData.ServerID, AppId, validate, custom: custom, loginAnonymous: loginAnonymous);
+            Error = error;
+            await Task.Run(() => { p.WaitForExit(); });
+            return p;
+        }
 
-
-      /*  public bool SteamCMDAgent.IsInstallValid()
+        public new bool IsInstallValid()
         {
             return File.Exists(Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, StartPath));
         }
 
-        public bool IsImportValid(string path)
+        public new bool IsImportValid(string path)
         {
-            string importPath = Path.Combine(path, StartPath);
-            Error = $"Invalid Path! Fail to find {Path.GetFileName(StartPath)}";
-            return File.Exists(importPath);
+            string exePath = Path.Combine(path, "PackageInfo.bin");
+            Error = $"Invalid Path! Fail to find {Path.GetFileName(exePath)}";
+            return File.Exists(exePath);
         }
 
-        public string GetLocalBuild()
+        public new string GetLocalBuild()
         {
-            var localBuild = new Installer.SteamCMD();
-            return localBuild.GetLocalBuild(_serverData.ServerID, AppId);
+            var steamCMD = new Installer.SteamCMD();
+            return steamCMD.GetLocalBuild(_serverData.ServerID, AppId);
         }
-            *//*
-        public async Task<string> Factorio.GetRemoteBuild()
+
+        public new async Task<string> GetRemoteBuild()
         {
-            var remoteBuild = new Installer.SteamCMDAgent();
-            return await remoteBuild.GetRemoteBuild(AppId);
-        } */
-    }
-}
+            var steamCMD = new Installer.SteamCMD();
+            return await steamCMD.GetRemoteBuild(AppId);
+        }
+    }//class
+}//namespace
